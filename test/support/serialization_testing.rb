@@ -38,6 +38,7 @@ end
 
 class Minitest::Test
   def before_setup
+    super
     ActionController::Base.cache_store.clear
   end
 

@@ -46,13 +46,13 @@ module ActionController
         end
 
         def render_object_with_cache_enabled
-          @comment = Comment.new(id: 1, body: 'ZOMG A COMMENT')
-          @author  = Author.new(id: 1, name: 'Joao Moura.')
-          @post    = Post.new(id: 1, title: 'New Post', body: 'Body', comments: [@comment], author: @author)
+          @comment = Comment.new(id: 1, body: 'ZOMG A COMMENT was cached')
+          @author  = Author.new(id: 1, name: 'Joao Moura was cached')
+          @post    = Post.new(id: 1, title: 'New Post was cached', body: 'Body was cached', comments: [@comment], author: @author)
 
           generate_cached_serializer(@post)
 
-          @post.title = 'ZOMG a New Post'
+          @post.title = 'title was changed'
           render json: @post
         end
 
@@ -74,47 +74,44 @@ module ActionController
         def render_object_expired_with_cache_enabled
           comment = Comment.new(id: 1, body: 'ZOMG A COMMENT')
           author = Author.new(id: 1, name: 'Joao Moura.')
-          post = Post.new(id: 1, title: 'New Post', body: 'Body', comments: [comment], author: author)
+          post = Post.new(id: 1, title: 'Post title cache fresh', body: 'Body', comments: [comment], author: author)
 
           generate_cached_serializer(post)
 
-          post.title = 'ZOMG a New Post'
+          post.title = 'ZOMG, the post title cache expired'
 
-          expires_in = [
-            PostSerializer._cache_options[:expires_in],
-            CommentSerializer._cache_options[:expires_in],
-          ].max + 200
-
-          Timecop.travel(Time.zone.now + expires_in) do
+          serializer_cache_expired(PostSerializer, CommentSerializer) do
             render json: post
           end
         end
 
         def render_changed_object_with_cache_enabled
-          comment = Comment.new(id: 1, body: 'ZOMG A COMMENT')
-          author = Author.new(id: 1, name: 'Joao Moura.')
-          post = Post.new(id: 1, title: 'ZOMG a New Post', body: 'Body', comments: [comment], author: author)
+          comment = Comment.new(id: 1, body: 'cached comment')
+          author = Author.new(id: 1, name: 'cached name')
+          post = Post.new(id: 1, title: 'cached title', body: 'cached body', comments: [comment], author: author)
 
-          render json: post
+          Timecop.freeze(Time.zone.now) do
+            render json: post
+          end
         end
 
         def render_fragment_changed_object_with_only_cache_enabled
           author = Author.new(id: 1, name: 'Joao Moura.')
-          role = Role.new(id: 42, name: 'ZOMG A ROLE', description: 'DESCRIPTION HERE', author: author)
+          role = Role.new(id: 42, name: 'ZOMG only the role name was cached', description: 'DESCRIPTION HERE', author: author)
 
           generate_cached_serializer(role)
-          role.name = 'lol'
-          role.description = 'HUEHUEBRBR'
+          role.name = 'uh oh, the role name changed'
+          role.description = 'this should change'
 
           render json: role
         end
 
         def render_fragment_changed_object_with_except_cache_enabled
           author = Author.new(id: 1, name: 'Joao Moura.')
-          bio = Bio.new(id: 42, content: 'ZOMG A ROLE', rating: 5, author: author)
+          bio = Bio.new(id: 42, content: 'cache except this', rating: 5, author: author)
 
           generate_cached_serializer(bio)
-          bio.content = 'lol'
+          bio.content = 'only this changed'
           bio.rating = 0
 
           render json: bio
@@ -123,13 +120,28 @@ module ActionController
         def render_fragment_changed_object_with_relationship
           comment = Comment.new(id: 1, body: 'ZOMG A COMMENT')
           comment2 = Comment.new(id: 1, body: 'ZOMG AN UPDATED-BUT-NOT-CACHE-EXPIRED COMMENT')
-          like = Like.new(id: 1, likeable: comment, time: 3.days.ago)
+          like = Like.new(id: 1, likeable: comment, time: '3.days.ago')
 
           generate_cached_serializer(like)
           like.likable = comment2
           like.time = Time.zone.now.to_s
 
           render json: like
+        end
+
+        private
+
+        def serializers_cache_expires_in(*serializers)
+          Array(serializers).map do |serializer|
+            serializer._cache_options[:expires_in]
+          end.compact.max + 200
+        end
+
+        def serializer_cache_expired(*serializers)
+          expires_in = serializers_cache_expires_in(*serializers)
+          Timecop.travel(Time.zone.now + expires_in) do
+            yield
+          end
         end
       end
 
@@ -254,15 +266,15 @@ module ActionController
         assert_equal expected.to_json, @response.body
       end
 
-      def test_render_with_cache_enable
+      def test_render_object_with_cache_enabled
         expected = {
           id: 1,
-          title: 'New Post',
-          body: 'Body',
+          title: 'New Post was cached',
+          body: 'Body was cached',
           comments: [
             {
               id: 1,
-              body: 'ZOMG A COMMENT' }
+              body: 'ZOMG A COMMENT was cached' }
           ],
           blog: {
             id: 999,
@@ -270,10 +282,9 @@ module ActionController
           },
           author: {
             id: 1,
-            name: 'Joao Moura.'
+            name: 'Joao Moura was cached'
           }
         }
-
         ActionController::Base.cache_store.clear
         Timecop.freeze(Time.zone.now) do
           get :render_object_with_cache_enabled
@@ -290,13 +301,13 @@ module ActionController
         assert_not_equal expected.to_json, @response.body
       end
 
-      def test_render_with_cache_enable_and_expired
+      def test_render_object_expired_with_cache_enabled
         ActionController::Base.cache_store.clear
         get :render_object_expired_with_cache_enabled
 
         expected = {
           id: 1,
-          title: 'ZOMG a New Post',
+          title: 'ZOMG, the post title cache expired',
           body: 'Body',
           comments: [
             {
@@ -319,18 +330,18 @@ module ActionController
         if ENV['APPVEYOR'] && actual != expected
           skip('Cache expiration tests sometimes fail on Appveyor. FIXME :)')
         else
-          assert_equal actual, expected
+          assert_equal expected, actual
         end
       end
 
-      def test_render_with_fragment_only_cache_enable
+      def test_render_with_fragment_only_cache_enabled
         ActionController::Base.cache_store.clear
         get :render_fragment_changed_object_with_only_cache_enabled
         response = JSON.parse(@response.body)
 
         assert_equal 'application/json', @response.content_type
-        assert_equal 'ZOMG A ROLE', response['name']
-        assert_equal 'HUEHUEBRBR', response['description']
+        assert_equal 'ZOMG only the role name was cached', response['name']
+        assert_equal 'this should change', response['description']
       end
 
       def test_render_with_fragment_except_cache_enable
@@ -340,7 +351,7 @@ module ActionController
 
         assert_equal 'application/json', @response.content_type
         assert_equal 5, response['rating']
-        assert_equal 'lol', response['content']
+        assert_equal 'only this changed', response['content']
       end
 
       def test_render_fragment_changed_object_with_relationship
@@ -360,7 +371,7 @@ module ActionController
           }
 
           assert_equal 'application/json', @response.content_type
-          assert_equal expected_return, response
+          assert_equal response, expected_return
         end
       end
 
@@ -420,6 +431,7 @@ module ActionController
           controller.get_serializer(Profile.new)
         end)
       end
+
     end
   end
 end

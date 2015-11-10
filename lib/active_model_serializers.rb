@@ -53,6 +53,7 @@ require 'action_controller/serialization'
 ActiveSupport.on_load(:action_controller) do
   include ::ActionController::Serialization
   ActionDispatch::Reloader.to_prepare do
+    # Is this a dev concern or test?
     ActiveModel::Serializer.serializers_cache.clear
   end
 end
