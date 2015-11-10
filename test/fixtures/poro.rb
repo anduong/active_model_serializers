@@ -3,6 +3,9 @@ $VERBOSE = nil
 class Model < ActiveModelSerializers::Model
   FILE_DIGEST = Digest::MD5.hexdigest(File.open(__FILE__).read)
 
+  attr_accessor :id, :name, :title, :body, :admin, :comments, :birthday, :author, :type,
+    :content, :date, :description, :lat, :lng, :posts, :articles, :locations, :ratings,
+    :writer, :roles, :rating, :bio, :likeable, :time, :nested_posts
   ### Helper methods, not required to be serializable
 
   # Convenience when not adding @attributes readers and writers
