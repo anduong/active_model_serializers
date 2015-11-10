@@ -6,6 +6,7 @@ require 'action_controller/railtie'
 module ActiveModelSerializers
   mattr_accessor :logger
   self.logger = Rails.logger || Logger.new(IO::NULL)
+  def self.config; ActiveModel::Serializer.config; end
 
   extend ActiveSupport::Autoload
   autoload :Model
